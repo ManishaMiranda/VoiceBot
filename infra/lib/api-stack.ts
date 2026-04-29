@@ -2,7 +2,6 @@ import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
 import { StorageStack } from './storage-stack';
 import { AuthStack } from './auth-stack';
@@ -13,16 +12,35 @@ export interface ApiStackProps extends cdk.StackProps {
   sageMakerEndpointName?: string;
 }
 
+/**
+ * ApiStack — Lambda Function URLs instead of API Gateway.
+ *
+ * The SCP in this AWS organization blocks both API Gateway v1 (/restapis)
+ * and v2 (/apis). Lambda Function URLs provide direct HTTPS endpoints with
+ * no API Gateway dependency.
+ *
+ * Auth strategy: admin routes validate the Cognito JWT inside the Lambda
+ * handler itself (the JWT is passed in the Authorization header as before).
+ * Public routes have no auth check.
+ *
+ * CloudFront routes by path prefix to the correct Function URL origin.
+ */
 export class ApiStack extends cdk.Stack {
-  /** The REST API — used by CdnStack to build the CloudFront origin domain. */
-  public readonly restApi: apigw.RestApi;
+  // Function URL domains (without https://) — used by CdnStack as origins
+  public readonly uploadSampleUrlDomain: string;
+  public readonly manageProfileUrlDomain: string;
+  public readonly synthesizeUrlDomain: string;
+  public readonly quoteGeneratorUrlDomain: string;
+  public readonly quizUrlDomain: string;
+  public readonly leaderboardUrlDomain: string;
 
-  /** Expose apiEndpoint for compatibility with CdnStack (https://id.execute-api.region.amazonaws.com/prod) */
-  public get httpApi(): { apiEndpoint: string } {
-    return {
-      apiEndpoint: `https://${this.restApi.restApiId}.execute-api.${this.region}.amazonaws.com/${this.restApi.deploymentStage.stageName}`,
-    };
-  }
+  // Full Function URLs — exported as outputs
+  public readonly uploadSampleUrl: string;
+  public readonly manageProfileUrl: string;
+  public readonly synthesizeUrl: string;
+  public readonly quoteGeneratorUrl: string;
+  public readonly quizUrl: string;
+  public readonly leaderboardUrl: string;
 
   public readonly uploadSampleFn: lambdaNodejs.NodejsFunction;
   public readonly manageProfileFn: lambdaNodejs.NodejsFunction;
@@ -34,7 +52,7 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { storageStack, authStack, sageMakerEndpointName = 'colleague-voice-bot-endpoint' } = props;
+    const { storageStack, sageMakerEndpointName = 'colleague-voice-bot-endpoint' } = props;
 
     // ── Shared Lambda environment variables ──────────────────────────────────
 
@@ -46,6 +64,9 @@ export class ApiStack extends cdk.Stack {
       QUOTE_LIBRARY_TABLE: storageStack.quoteLibraryTable.tableName,
       AUDIO_BUCKET_NAME: storageStack.audioBucket.bucketName,
       SAGEMAKER_ENDPOINT_NAME: sageMakerEndpointName,
+      // Cognito details for in-Lambda JWT validation on admin routes
+      COGNITO_USER_POOL_ID: props.authStack.userPool.userPoolId,
+      COGNITO_CLIENT_ID: props.authStack.userPoolClient.userPoolClientId,
     };
 
     const commonLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
@@ -133,109 +154,48 @@ export class ApiStack extends cdk.Stack {
 
     storageStack.quoteLibraryTable.grantReadData(this.quoteGeneratorFn);
 
-    // ── REST API ─────────────────────────────────────────────────────────────
+    // ── Lambda Function URLs (CORS enabled, no auth at URL level) ────────────
+    // Auth for admin routes is handled inside the Lambda handlers using the
+    // Cognito JWT passed in the Authorization header.
 
-    this.restApi = new apigw.RestApi(this, 'RestApi', {
-      restApiName: 'colleague-voice-bot-api',
-      description: 'Colleague Voice Bot REST API',
-      deployOptions: {
-        stageName: 'prod',
+    const fnUrlOptions: lambda.FunctionUrlOptions = {
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: ['*'],
+        allowedMethods: [lambda.HttpMethod.ALL],
+        allowedHeaders: ['Content-Type', 'Authorization'],
       },
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigw.Cors.ALL_ORIGINS,
-        allowMethods: apigw.Cors.ALL_METHODS,
-        allowHeaders: ['Content-Type', 'Authorization'],
-      },
-    });
-
-    // ── Cognito Authorizer ───────────────────────────────────────────────────
-
-    const cognitoAuthorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'CognitoAuthorizer', {
-      cognitoUserPools: [authStack.userPool],
-      authorizerName: 'CognitoAuthorizer',
-      identitySource: 'method.request.header.Authorization',
-    });
-
-    // ── Lambda integrations ──────────────────────────────────────────────────
-
-    const uploadInt = new apigw.LambdaIntegration(this.uploadSampleFn);
-    const profileInt = new apigw.LambdaIntegration(this.manageProfileFn);
-    const synthesizeInt = new apigw.LambdaIntegration(this.synthesizeFn);
-    const quoteInt = new apigw.LambdaIntegration(this.quoteGeneratorFn);
-    const quizInt = new apigw.LambdaIntegration(this.quizFn);
-    const leaderboardInt = new apigw.LambdaIntegration(this.leaderboardFn);
-
-    const authOpts: apigw.MethodOptions = {
-      authorizer: cognitoAuthorizer,
-      authorizationType: apigw.AuthorizationType.COGNITO,
     };
 
-    const noAuth: apigw.MethodOptions = {
-      authorizationType: apigw.AuthorizationType.NONE,
-    };
+    const uploadUrl = this.uploadSampleFn.addFunctionUrl(fnUrlOptions);
+    const profileUrl = this.manageProfileFn.addFunctionUrl(fnUrlOptions);
+    const synthesizeUrl = this.synthesizeFn.addFunctionUrl(fnUrlOptions);
+    const quoteUrl = this.quoteGeneratorFn.addFunctionUrl(fnUrlOptions);
+    const quizUrl = this.quizFn.addFunctionUrl(fnUrlOptions);
+    const leaderboardUrl = this.leaderboardFn.addFunctionUrl(fnUrlOptions);
 
-    // ── /admin ───────────────────────────────────────────────────────────────
+    // Extract domain names (strip https://) for CloudFront origins
+    this.uploadSampleUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', uploadUrl.url));
+    this.manageProfileUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', profileUrl.url));
+    this.synthesizeUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', synthesizeUrl.url));
+    this.quoteGeneratorUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', quoteUrl.url));
+    this.quizUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', quizUrl.url));
+    this.leaderboardUrlDomain = cdk.Fn.select(2, cdk.Fn.split('/', leaderboardUrl.url));
 
-    const admin = this.restApi.root.addResource('admin');
-
-    // /admin/samples
-    const adminSamples = admin.addResource('samples');
-    adminSamples.addMethod('POST', uploadInt, authOpts);
-
-    const adminSample = adminSamples.addResource('{sampleId}');
-    adminSample.addMethod('DELETE', uploadInt, authOpts);
-
-    // /admin/profiles
-    const adminProfiles = admin.addResource('profiles');
-    adminProfiles.addMethod('GET', profileInt, authOpts);
-
-    const adminProfile = adminProfiles.addResource('{colleagueId}');
-    const adminProfileBuild = adminProfile.addResource('build');
-    adminProfileBuild.addMethod('POST', profileInt, authOpts);
-
-    // /admin/leaderboard
-    const adminLeaderboard = admin.addResource('leaderboard');
-    const adminLeaderboardEntry = adminLeaderboard.addResource('{entry}');
-    adminLeaderboardEntry.addMethod('DELETE', leaderboardInt, authOpts);
-
-    // ── /colleagues ──────────────────────────────────────────────────────────
-
-    const colleagues = this.restApi.root.addResource('colleagues');
-    colleagues.addMethod('GET', profileInt, noAuth);
-
-    // ── /synthesize ──────────────────────────────────────────────────────────
-
-    const synthesize = this.restApi.root.addResource('synthesize');
-    synthesize.addMethod('POST', synthesizeInt, noAuth);
-
-    // ── /quotes/random ───────────────────────────────────────────────────────
-
-    const quotes = this.restApi.root.addResource('quotes');
-    const quotesRandom = quotes.addResource('random');
-    quotesRandom.addMethod('POST', quoteInt, noAuth);
-
-    // ── /quiz ────────────────────────────────────────────────────────────────
-
-    const quiz = this.restApi.root.addResource('quiz');
-    quiz.addResource('start').addMethod('POST', quizInt, noAuth);
-    quiz.addResource('answer').addMethod('POST', quizInt, noAuth);
-
-    // ── /leaderboard ─────────────────────────────────────────────────────────
-
-    const leaderboard = this.restApi.root.addResource('leaderboard');
-    leaderboard.addMethod('GET', leaderboardInt, noAuth);
-    leaderboard.addMethod('POST', leaderboardInt, noAuth);
+    this.uploadSampleUrl = uploadUrl.url;
+    this.manageProfileUrl = profileUrl.url;
+    this.synthesizeUrl = synthesizeUrl.url;
+    this.quoteGeneratorUrl = quoteUrl.url;
+    this.quizUrl = quizUrl.url;
+    this.leaderboardUrl = leaderboardUrl.url;
 
     // ── Stack Outputs ────────────────────────────────────────────────────────
 
-    new cdk.CfnOutput(this, 'RestApiUrl', {
-      value: this.restApi.url,
-      exportName: 'ColleagueVoiceBot-RestApiUrl',
-    });
-
-    new cdk.CfnOutput(this, 'RestApiId', {
-      value: this.restApi.restApiId,
-      exportName: 'ColleagueVoiceBot-RestApiId',
-    });
+    new cdk.CfnOutput(this, 'UploadSampleUrl', { value: uploadUrl.url });
+    new cdk.CfnOutput(this, 'ManageProfileUrl', { value: profileUrl.url });
+    new cdk.CfnOutput(this, 'SynthesizeUrl', { value: synthesizeUrl.url });
+    new cdk.CfnOutput(this, 'QuoteGeneratorUrl', { value: quoteUrl.url });
+    new cdk.CfnOutput(this, 'QuizUrl', { value: quizUrl.url });
+    new cdk.CfnOutput(this, 'LeaderboardUrl', { value: leaderboardUrl.url });
   }
 }
