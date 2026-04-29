@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend
+        # Build frontend so CdnStack synth doesn't fail looking for frontend/dist.
+        # BucketDeployment is skipped at synth time if dist doesn't exist, but
+        # building here ensures the full synth succeeds cleanly.
+        run: npm run build --workspace=frontend
+
       - name: Deploy Storage and Auth stacks only
         # Deploy Storage and Auth first so ECR repo exists before image push.
         # SageMaker stack is skipped here — deployed after image push.
@@ -127,6 +133,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
       - name: Install dependencies
@@ -157,6 +164,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
       - name: Install dependencies

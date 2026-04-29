@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -209,12 +210,18 @@ export class CdnStack extends cdk.Stack {
     });
 
     // ── Deploy frontend build to UI S3 bucket ────────────────────────────────
+    // Only include BucketDeployment when frontend/dist exists (i.e. after
+    // `npm run build --workspace=frontend` has run). On the base infra deploy
+    // phase the dist folder doesn't exist yet, so we skip this safely.
 
-    new s3deploy.BucketDeployment(this, 'DeployUi', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '../../frontend/dist'))],
-      destinationBucket: storageStack.uiBucket,
-      distribution: this.distribution,
-      distributionPaths: ['/*'],
-    });
+    const frontendDistPath = path.join(__dirname, '../../frontend/dist');
+    if (fs.existsSync(frontendDistPath)) {
+      new s3deploy.BucketDeployment(this, 'DeployUi', {
+        sources: [s3deploy.Source.asset(frontendDistPath)],
+        destinationBucket: storageStack.uiBucket,
+        distribution: this.distribution,
+        distributionPaths: ['/*'],
+      });
+    }
   }
 }
