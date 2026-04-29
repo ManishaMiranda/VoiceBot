@@ -5,139 +5,169 @@ on:
     branches:
       - main
 
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: colleague-voice-bot-model
+
 jobs:
-  # Phase 1: Deploy storage + auth + SageMaker stacks (creates ECR repo)
-  # We deploy only the stacks that don't need the Docker image yet.
+  # ── Phase 1: Base infrastructure (no Docker image needed) ─────────────────
   deploy-infra-base:
-    name: Deploy Base Infrastructure (Storage, Auth, SageMaker ECR)
+    name: 1 · Deploy Storage + Auth
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Build frontend
-        # Build frontend so CdnStack synth doesn't fail looking for frontend/dist.
-        # BucketDeployment is skipped at synth time if dist doesn't exist, but
-        # building here ensures the full synth succeeds cleanly.
+      - name: Build frontend (needed for CDK synth of CdnStack)
         run: npm run build --workspace=frontend
 
-      - name: Deploy Storage and Auth stacks only
-        # Deploy Storage and Auth first so ECR repo exists before image push.
-        # SageMaker stack is skipped here — deployed after image push.
-        run: |
-          npx cdk deploy ColleagueVoiceBotStorage ColleagueVoiceBotAuth --require-approval never
+      - name: Deploy Storage + Auth stacks
+        run: npx cdk deploy ColleagueVoiceBotStorage ColleagueVoiceBotAuth --require-approval never
         working-directory: infra
         env:
-          MODEL_IMAGE_URI: placeholder  # not used for these stacks
+          MODEL_IMAGE_URI: placeholder
 
-  # Phase 2: Build and push the Docker image (ECR repo now exists)
+  # ── Phase 2: Build + push Docker image ────────────────────────────────────
   build-and-push-model:
-    name: Build & Push Model Container
+    name: 2 · Build & Push Model Image
     runs-on: ubuntu-latest
     needs: deploy-infra-base
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Create ECR repo if not exists
+      - name: Ensure ECR repository exists
         run: |
-          aws ecr describe-repositories --repository-names colleague-voice-bot-model --region us-east-1 || \
-          aws ecr create-repository --repository-name colleague-voice-bot-model --region us-east-1
+          aws ecr describe-repositories \
+            --repository-names $ECR_REPO \
+            --region $AWS_REGION 2>/dev/null || \
+          aws ecr create-repository \
+            --repository-name $ECR_REPO \
+            --region $AWS_REGION
 
       - name: Build Docker image
-        run: docker build -t colleague-voice-bot-model model/
+        run: docker build -t $ECR_REPO model/
 
-      - name: Tag and push to ECR
+      - name: Push to ECR
         run: |
-          docker tag colleague-voice-bot-model:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest
+          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          docker tag $ECR_REPO:latest $IMAGE_URI
+          docker push $IMAGE_URI
 
-  # Phase 3: Deploy remaining stacks (SageMaker endpoint, API, CDN)
-  deploy-cdk:
-    name: Deploy CDK Stacks (SageMaker, API, CDN)
+      - name: Verify image exists in ECR
+        run: |
+          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          echo "Verifying image: $IMAGE_URI"
+          aws ecr describe-images \
+            --repository-name $ECR_REPO \
+            --image-ids imageTag=latest \
+            --region $AWS_REGION
+          echo "✅ Image confirmed in ECR"
+
+  # ── Phase 3: Deploy SageMaker stack (image now confirmed in ECR) ──────────
+  deploy-sagemaker:
+    name: 3 · Deploy SageMaker Stack
     runs-on: ubuntu-latest
     needs: build-and-push-model
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+
+      - name: Build frontend (needed for CDK synth)
+        run: npm run build --workspace=frontend
+
+      - name: Deploy SageMaker stack
+        run: npx cdk deploy ColleagueVoiceBotSageMaker --require-approval never
+        working-directory: infra
+        env:
+          MODEL_IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ env.ECR_REPO }}:latest
+
+  # ── Phase 4: Deploy API + CDN stacks ──────────────────────────────────────
+  deploy-api-cdn:
+    name: 4 · Deploy API + CDN
+    runs-on: ubuntu-latest
+    needs: deploy-sagemaker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - run: npm ci
 
       - name: Build frontend
         run: npm run build --workspace=frontend
 
-      - name: Deploy CDK stacks
-        run: npm run deploy:ci --workspace=infra
+      - name: Deploy API + CDN stacks
+        run: npx cdk deploy ColleagueVoiceBotApi ColleagueVoiceBotCdn --require-approval never
+        working-directory: infra
         env:
-          MODEL_IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest
+          MODEL_IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ env.ECR_REPO }}:latest
 
+  # ── Phase 5: Seed quote library ───────────────────────────────────────────
   seed-quotes:
-    name: Seed Quote Library
+    name: 5 · Seed Quote Library
     runs-on: ubuntu-latest
-    needs: deploy-cdk
+    needs: deploy-api-cdn
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Run seed script
         run: npx ts-node backend/scripts/seed-quotes.ts
@@ -145,30 +175,27 @@ jobs:
           QUOTE_LIBRARY_TABLE: QuoteLibrary
           AWS_REGION: us-east-1
 
+  # ── Phase 6: Smoke tests ──────────────────────────────────────────────────
   smoke-tests:
-    name: Smoke Tests
+    name: 6 · Smoke Tests
     runs-on: ubuntu-latest
     needs: seed-quotes
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Run smoke tests
         run: npm run test:smoke
