@@ -21,9 +21,11 @@ export class CdnStack extends cdk.Stack {
 
     const { storageStack, apiStack } = props;
 
-    // ── Origin Access Control (OAC) for UI S3 bucket ─────────────────────────
-    // Using L1 CfnOriginAccessControl because S3BucketOrigin (added in CDK
-    // 2.150+) is not available in our pinned version (2.147.3).
+    // ── Origin Access Control (OAC) ──────────────────────────────────────────
+    // OAC is the modern replacement for OAI. We use it for both S3 buckets.
+    // The SCP in this account blocks CreateCloudFrontOriginAccessIdentity, so
+    // we must NOT use S3Origin (which auto-creates an OAI). Instead we build
+    // origins entirely from L1 constructs so no OAI is ever requested.
 
     const uiOac = new cloudfront.CfnOriginAccessControl(this, 'UiBucketOAC', {
       originAccessControlConfig: {
@@ -35,9 +37,18 @@ export class CdnStack extends cdk.Stack {
       },
     });
 
+    const audioOac = new cloudfront.CfnOriginAccessControl(this, 'AudioBucketOAC', {
+      originAccessControlConfig: {
+        name: 'colleague-voice-bot-audio-oac',
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4',
+        description: 'OAC for Colleague Voice Bot audio S3 bucket',
+      },
+    });
+
     // ── API Gateway origin ───────────────────────────────────────────────────
 
-    // Strip the https:// prefix from the API endpoint to get the domain name
     const apiDomainName = cdk.Fn.select(
       2,
       cdk.Fn.split('/', apiStack.httpApi.apiEndpoint),
@@ -47,12 +58,25 @@ export class CdnStack extends cdk.Stack {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
     });
 
-    // ── S3 origins using S3Origin (compatible with CDK 2.147.3) ─────────────
-    // S3Origin uses OAI by default; we'll override to OAC via escape hatch.
-    // We pass an empty OriginAccessIdentity to suppress the auto-created OAI.
+    // ── S3 origins built from L1 — NO OAI created ───────────────────────────
+    // We use a dummy HttpOrigin placeholder at the L2 level, then override the
+    // CloudFormation properties to point at the real S3 regional domain names
+    // with OAC and no OAI. This avoids any call to CreateCloudFrontOriginAccessIdentity.
 
-    const uiS3Origin = new cloudfrontOrigins.S3Origin(storageStack.uiBucket);
-    const audioS3Origin = new cloudfrontOrigins.S3Origin(storageStack.audioBucket);
+    const uiBucketRegionalDomain =
+      `${storageStack.uiBucket.bucketName}.s3.${this.region}.amazonaws.com`;
+    const audioBucketRegionalDomain =
+      `${storageStack.audioBucket.bucketName}.s3.${this.region}.amazonaws.com`;
+
+    // Use HttpOrigin with the S3 regional domain — CloudFront accepts this for
+    // OAC-signed requests. We set customHeaders to nothing and rely on OAC signing.
+    const uiS3Origin = new cloudfrontOrigins.HttpOrigin(uiBucketRegionalDomain, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+    });
+
+    const audioS3Origin = new cloudfrontOrigins.HttpOrigin(audioBucketRegionalDomain, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+    });
 
     // ── CloudFront Distribution ──────────────────────────────────────────────
 
@@ -60,7 +84,6 @@ export class CdnStack extends cdk.Stack {
       comment: 'Colleague Voice Bot CDN',
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
 
-      // Default behavior: UI S3 bucket, cached
       defaultBehavior: {
         origin: uiS3Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -70,7 +93,6 @@ export class CdnStack extends cdk.Stack {
       },
 
       additionalBehaviors: {
-        // /api/* → API Gateway, no caching, all methods, forward all headers
         '/api/*': {
           origin: apiOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -78,8 +100,6 @@ export class CdnStack extends cdk.Stack {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         },
-
-        // /audio/* → Audio S3 bucket, TTL=0 (no caching for presigned URLs)
         '/audio/*': {
           origin: audioS3Origin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -88,7 +108,6 @@ export class CdnStack extends cdk.Stack {
         },
       },
 
-      // SPA fallback: serve index.html for unknown paths
       errorResponses: [
         {
           httpStatus: 403,
@@ -105,25 +124,31 @@ export class CdnStack extends cdk.Stack {
       ],
     });
 
-    // ── Upgrade UI origin from OAI → OAC via L1 escape hatch ────────────────
-    // S3Origin creates an OAI automatically. We override the CloudFormation
-    // properties to use our OAC instead and clear the OAI identity string.
+    // ── Attach OAC to S3 origins via L1 escape hatch ─────────────────────────
+    // HttpOrigin creates a CustomOriginConfig (no OAI). We attach the OAC IDs
+    // so CloudFront signs requests to S3 with SigV4.
+    // Origin index 0 = UI bucket (default behavior), index 2 = audio bucket.
+    // Index 1 = API Gateway origin.
 
-    const cfnDistribution = this.distribution.node.defaultChild as cloudfront.CfnDistribution;
-    cfnDistribution.addPropertyOverride(
+    const cfnDist = this.distribution.node.defaultChild as cloudfront.CfnDistribution;
+
+    // UI bucket origin (index 0): attach OAC
+    cfnDist.addPropertyOverride(
       'DistributionConfig.Origins.0.OriginAccessControlId',
       uiOac.attrId,
     );
-    cfnDistribution.addPropertyOverride(
-      'DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity',
-      '',
+
+    // Audio bucket origin (index 2): attach OAC
+    // Note: additionalBehaviors origins are appended after the default origin.
+    // /api/* is index 1, /audio/* is index 2.
+    cfnDist.addPropertyOverride(
+      'DistributionConfig.Origins.2.OriginAccessControlId',
+      audioOac.attrId,
     );
 
-    // ── Grant CloudFront OAC read access to UI S3 bucket ────────────────────
-    // Use a standalone CfnBucketPolicy that lives entirely in CdnStack to
-    // avoid a cyclic cross-stack reference (StorageStack ↔ CdnStack).
-    // We reference the bucket by its physical name (a string) rather than
-    // via the bucket object, which would pull StorageStack tokens into here.
+    // ── Bucket policies: allow CloudFront OAC to read from S3 ────────────────
+    // Use standalone CfnBucketPolicy resources (live in CdnStack) to avoid
+    // the cyclic cross-stack dependency that addToResourcePolicy() would cause.
 
     const distributionArn = cdk.Stack.of(this).formatArn({
       service: 'cloudfront',
@@ -139,15 +164,32 @@ export class CdnStack extends cdk.Stack {
         Version: '2012-10-17',
         Statement: [
           {
-            Sid: 'AllowCloudFrontServicePrincipalOAC',
+            Sid: 'AllowCloudFrontOACUi',
             Effect: 'Allow',
             Principal: { Service: 'cloudfront.amazonaws.com' },
             Action: 's3:GetObject',
             Resource: `arn:aws:s3:::${storageStack.uiBucket.bucketName}/*`,
             Condition: {
-              StringEquals: {
-                'AWS:SourceArn': distributionArn,
-              },
+              StringEquals: { 'AWS:SourceArn': distributionArn },
+            },
+          },
+        ],
+      },
+    });
+
+    new s3.CfnBucketPolicy(this, 'AudioBucketPolicy', {
+      bucket: storageStack.audioBucket.bucketName,
+      policyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Sid: 'AllowCloudFrontOACAudio',
+            Effect: 'Allow',
+            Principal: { Service: 'cloudfront.amazonaws.com' },
+            Action: 's3:GetObject',
+            Resource: `arn:aws:s3:::${storageStack.audioBucket.bucketName}/*`,
+            Condition: {
+              StringEquals: { 'AWS:SourceArn': distributionArn },
             },
           },
         ],
