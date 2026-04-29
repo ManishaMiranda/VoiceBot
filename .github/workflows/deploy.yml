@@ -144,8 +144,11 @@ jobs:
       - name: Build frontend
         run: npm run build --workspace=frontend
 
-      - name: Deploy API + CDN stacks
-        run: npx cdk deploy ColleagueVoiceBotApi ColleagueVoiceBotCdn --require-approval never
+      - name: Deploy API stack
+        # CDN stack is skipped — CloudFront must be created manually in AWS Console
+        # due to SCP restrictions blocking OAC, OAI, and public S3.
+        # See ColleagueVoiceBotApi stack outputs for Lambda Function URLs to use as origins.
+        run: npx cdk deploy ColleagueVoiceBotApi --require-approval never
         working-directory: infra
         env:
           MODEL_IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ env.ECR_REPO }}:latest

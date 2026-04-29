@@ -47,13 +47,18 @@ apiStack.addDependency(storageStack);
 apiStack.addDependency(authStack);
 apiStack.addDependency(sageMakerStack);
 
-// 5. CDN (CloudFront) — depends on StorageStack + ApiStack
-const cdnStack = new CdnStack(app, 'ColleagueVoiceBotCdn', {
-  env,
-  storageStack,
-  apiStack,
-});
-cdnStack.addDependency(storageStack);
-cdnStack.addDependency(apiStack);
+// 5. CDN (CloudFront) — manual setup required due to SCP restrictions
+// The SCP blocks cloudfront:CreateOriginAccessControl, cloudfront:CreateCloudFrontOriginAccessIdentity,
+// and public S3 buckets. Create the CloudFront distribution manually in the AWS Console
+// using the Lambda Function URLs from the ColleagueVoiceBotApi stack outputs.
+// Uncomment the lines below once you have manually created the distribution.
+//
+// const cdnStack = new CdnStack(app, 'ColleagueVoiceBotCdn', {
+//   env,
+//   storageStack,
+//   apiStack,
+// });
+// cdnStack.addDependency(storageStack);
+// cdnStack.addDependency(apiStack);
 
 app.synth();
