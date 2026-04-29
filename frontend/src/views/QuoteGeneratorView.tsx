@@ -27,9 +27,10 @@ const QuoteGeneratorView: React.FC = () => {
     const fetchColleagues = async () => {
       try {
         const res = await axios.get<Colleague[]>('/api/colleagues');
-        setColleagues(res.data);
+        setColleagues(Array.isArray(res.data) ? res.data : []);
       } catch {
         // Non-fatal
+        setColleagues([]);
       } finally {
         setLoadingColleagues(false);
       }

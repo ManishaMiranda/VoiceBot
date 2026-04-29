@@ -33,7 +33,7 @@ const LeaderboardView: React.FC = () => {
     setError(null);
     try {
       const res = await axios.get<LeaderboardEntry[]>('/api/leaderboard');
-      setEntries(res.data);
+      setEntries(Array.isArray(res.data) ? res.data : []);
     } catch {
       setError('Failed to load leaderboard. Please try again.');
     } finally {

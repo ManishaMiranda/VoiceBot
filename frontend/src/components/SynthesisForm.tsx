@@ -38,9 +38,11 @@ const SynthesisForm: React.FC = () => {
     const fetchColleagues = async () => {
       try {
         const res = await axios.get<Colleague[]>('/api/colleagues');
-        setColleagues(res.data);
+        // Guard: ensure response is an array before setting state
+        setColleagues(Array.isArray(res.data) ? res.data : []);
       } catch {
         // Non-fatal: show empty grid
+        setColleagues([]);
       } finally {
         setLoadingColleagues(false);
       }
