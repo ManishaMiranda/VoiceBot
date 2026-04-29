@@ -14,6 +14,17 @@ COPY requirements.txt /tmp/requirements.txt
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
+# ── Pre-download XTTS v2 model weights into the image ────────────────────────
+# Baking the model into the image avoids runtime download failures (EOF errors)
+# and makes container startup faster. The weights are ~1.8GB.
+# TTS downloads to ~/.local/share/tts by default.
+RUN python -c "\
+import os; \
+os.environ['COQUI_TOS_AGREED'] = '1'; \
+from TTS.api import TTS; \
+TTS('tts_models/multilingual/multi-dataset/xtts_v2', gpu=False); \
+print('Model downloaded successfully')"
+
 # Set working directory
 WORKDIR /opt/ml/code
 

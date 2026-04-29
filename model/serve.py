@@ -25,6 +25,9 @@ import tempfile
 import threading
 import wave as wave_module
 
+# Accept Coqui TTS terms of service non-interactively
+os.environ.setdefault('COQUI_TOS_AGREED', '1')
+
 import boto3
 from flask import Flask, Response, jsonify, request
 
