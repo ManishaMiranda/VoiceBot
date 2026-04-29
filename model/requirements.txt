@@ -1,6 +1,11 @@
-TTS==0.22.0
+# Use the actively maintained community fork of Coqui TTS
+# The original coqui-ai/TTS (TTS==0.22.0) is abandoned and incompatible
+# with modern transformers. idiap/coqui-ai-TTS is the maintained fork.
+coqui-tts==0.25.3
 boto3==1.34.131
 flask==3.0.3
 gunicorn==22.0.0
 soundfile==0.12.1
 numpy==1.26.4
+# Pin transformers to a version compatible with coqui-tts 0.25.x
+transformers==4.44.2
