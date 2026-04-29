@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 import { StorageStack } from './storage-stack';
@@ -120,27 +120,39 @@ export class CdnStack extends cdk.Stack {
     );
 
     // ── Grant CloudFront OAC read access to UI S3 bucket ────────────────────
+    // Use a standalone CfnBucketPolicy that lives entirely in CdnStack to
+    // avoid a cyclic cross-stack reference (StorageStack ↔ CdnStack).
+    // We reference the bucket by its physical name (a string) rather than
+    // via the bucket object, which would pull StorageStack tokens into here.
 
-    storageStack.uiBucket.addToResourcePolicy(
-      new iam.PolicyStatement({
-        sid: 'AllowCloudFrontServicePrincipalOAC',
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
-        actions: ['s3:GetObject'],
-        resources: [storageStack.uiBucket.arnForObjects('*')],
-        conditions: {
-          StringEquals: {
-            'AWS:SourceArn': cdk.Stack.of(this).formatArn({
-              service: 'cloudfront',
-              resource: 'distribution',
-              resourceName: this.distribution.distributionId,
-              region: '',
-              arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
-            }),
+    const distributionArn = cdk.Stack.of(this).formatArn({
+      service: 'cloudfront',
+      resource: 'distribution',
+      resourceName: this.distribution.distributionId,
+      region: '',
+      arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+    });
+
+    new s3.CfnBucketPolicy(this, 'UiBucketPolicy', {
+      bucket: storageStack.uiBucket.bucketName,
+      policyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Sid: 'AllowCloudFrontServicePrincipalOAC',
+            Effect: 'Allow',
+            Principal: { Service: 'cloudfront.amazonaws.com' },
+            Action: 's3:GetObject',
+            Resource: `arn:aws:s3:::${storageStack.uiBucket.bucketName}/*`,
+            Condition: {
+              StringEquals: {
+                'AWS:SourceArn': distributionArn,
+              },
+            },
           },
-        },
-      }),
-    );
+        ],
+      },
+    });
 
     // ── Stack Outputs ────────────────────────────────────────────────────────
 
