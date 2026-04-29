@@ -73,13 +73,18 @@ export class CdnStack extends cdk.Stack {
     const quizOrigin = makeLambdaOrigin(apiStack.quizUrlDomain);
     const leaderboardOrigin = makeLambdaOrigin(apiStack.leaderboardUrlDomain);
 
-    // Shared behavior for Lambda origins — no caching, forward all headers
-    const lambdaBehavior: cloudfront.BehaviorOptions = {
+    // Shared behavior options for Lambda origins — no caching, forward all headers
+    const lambdaBehaviorBase = {
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
     };
+
+    const lb = (origin: cloudfront.IOrigin): cloudfront.BehaviorOptions => ({
+      ...lambdaBehaviorBase,
+      origin,
+    });
 
     // ── CloudFront Distribution ──────────────────────────────────────────────
 
@@ -106,14 +111,14 @@ export class CdnStack extends cdk.Stack {
         },
 
         // Lambda Function URL routes
-        '/api/admin/samples*':    { ...lambdaBehavior, origin: uploadOrigin },
-        '/api/admin/profiles*':   { ...lambdaBehavior, origin: profileOrigin },
-        '/api/admin/leaderboard*':{ ...lambdaBehavior, origin: leaderboardOrigin },
-        '/api/colleagues*':       { ...lambdaBehavior, origin: profileOrigin },
-        '/api/synthesize*':       { ...lambdaBehavior, origin: synthesizeOrigin },
-        '/api/quotes*':           { ...lambdaBehavior, origin: quoteOrigin },
-        '/api/quiz*':             { ...lambdaBehavior, origin: quizOrigin },
-        '/api/leaderboard*':      { ...lambdaBehavior, origin: leaderboardOrigin },
+        '/api/admin/samples*':     lb(uploadOrigin),
+        '/api/admin/profiles*':    lb(profileOrigin),
+        '/api/admin/leaderboard*': lb(leaderboardOrigin),
+        '/api/colleagues*':        lb(profileOrigin),
+        '/api/synthesize*':        lb(synthesizeOrigin),
+        '/api/quotes*':            lb(quoteOrigin),
+        '/api/quiz*':              lb(quizOrigin),
+        '/api/leaderboard*':       lb(leaderboardOrigin),
       },
 
       errorResponses: [
