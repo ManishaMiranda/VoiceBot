@@ -22,9 +22,8 @@ export class CdnStack extends cdk.Stack {
     const { storageStack, apiStack } = props;
 
     // ── Origin Access Control (OAC) for UI S3 bucket ─────────────────────────
-    // Using L1 CfnOriginAccessControl + escape hatch because
-    // S3BucketOrigin.withOriginAccessControl has a known limitation with
-    // cross-stack bucket references (CDK issue #31462).
+    // Using L1 CfnOriginAccessControl because S3BucketOrigin (added in CDK
+    // 2.150+) is not available in our pinned version (2.147.3).
 
     const uiOac = new cloudfront.CfnOriginAccessControl(this, 'UiBucketOAC', {
       originAccessControlConfig: {
@@ -48,17 +47,12 @@ export class CdnStack extends cdk.Stack {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
     });
 
-    // ── UI S3 bucket origin (no OAC at L2 — attached via escape hatch below) ─
+    // ── S3 origins using S3Origin (compatible with CDK 2.147.3) ─────────────
+    // S3Origin uses OAI by default; we'll override to OAC via escape hatch.
+    // We pass an empty OriginAccessIdentity to suppress the auto-created OAI.
 
-    const uiS3Origin = cloudfrontOrigins.S3BucketOrigin.withBucketDefaults(
-      storageStack.uiBucket,
-    );
-
-    // ── Audio S3 bucket origin ───────────────────────────────────────────────
-
-    const audioS3Origin = cloudfrontOrigins.S3BucketOrigin.withBucketDefaults(
-      storageStack.audioBucket,
-    );
+    const uiS3Origin = new cloudfrontOrigins.S3Origin(storageStack.uiBucket);
+    const audioS3Origin = new cloudfrontOrigins.S3Origin(storageStack.audioBucket);
 
     // ── CloudFront Distribution ──────────────────────────────────────────────
 
@@ -111,9 +105,9 @@ export class CdnStack extends cdk.Stack {
       ],
     });
 
-    // ── Attach OAC to the UI S3 origin via L1 escape hatch ──────────────────
-    // The default origin (index 0) is the UI S3 bucket.
-    // We override the OAC ID and clear the legacy OAI identity string.
+    // ── Upgrade UI origin from OAI → OAC via L1 escape hatch ────────────────
+    // S3Origin creates an OAI automatically. We override the CloudFormation
+    // properties to use our OAC instead and clear the OAI identity string.
 
     const cfnDistribution = this.distribution.node.defaultChild as cloudfront.CfnDistribution;
     cfnDistribution.addPropertyOverride(
