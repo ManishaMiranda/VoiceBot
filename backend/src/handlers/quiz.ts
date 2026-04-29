@@ -26,6 +26,7 @@ import {
 import { computeCacheKey } from '../utils/cacheKey';
 import { withRetry } from '../utils/dynamoRetry';
 import { ValidationError, NotReadyError } from '../utils/errors';
+import { getMethod, getPath } from '../utils/eventHelpers';
 
 // ---------------------------------------------------------------------------
 // AWS clients (exported for test mocking)
@@ -381,8 +382,8 @@ async function handleQuizAnswer(body: QuizAnswerBody): Promise<APIGatewayProxyRe
 // ---------------------------------------------------------------------------
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   try {
-    const method = event.requestContext.http.method;
-    const path = event.rawPath;
+    const method = getMethod(event);
+    const path = getPath(event);
 
     if (method === 'POST' && path.endsWith('/quiz/start')) {
       const body: QuizStartBody = event.body ? JSON.parse(event.body) : {};

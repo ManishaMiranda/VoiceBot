@@ -17,6 +17,7 @@ import {
 import { computeChecksum } from '../utils/checksum';
 import { withRetry } from '../utils/dynamoRetry';
 import { BuildInProgressError, ChecksumMismatchError, NotReadyError } from '../utils/errors';
+import { getMethod, getPath, getPathParameters } from '../utils/eventHelpers';
 
 // ---------------------------------------------------------------------------
 // AWS clients
@@ -270,13 +271,13 @@ async function handleListProfiles(): Promise<
 // Route dispatcher
 // ---------------------------------------------------------------------------
 async function handleRequest(event: APIGatewayProxyEventV2): Promise<unknown> {
-  const method = event.requestContext.http.method.toUpperCase();
-  const path = event.requestContext.http.path;
+  const method = getMethod(event);
+  const path = getPath(event);
 
   // POST /admin/profiles/{colleagueId}/build
   if (method === 'POST' && path.includes('/admin/profiles/') && path.endsWith('/build')) {
     const colleagueId =
-      event.pathParameters?.colleagueId ??
+      getPathParameters(event)?.colleagueId ??
       path.replace('/admin/profiles/', '').replace('/build', '');
     return handleBuild(colleagueId);
   }

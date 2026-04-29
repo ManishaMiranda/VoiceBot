@@ -18,6 +18,7 @@ import { validateAudioFormat, validateDuration } from '../utils/validation';
 import { computeChecksum } from '../utils/checksum';
 import { withRetry } from '../utils/dynamoRetry';
 import { ValidationError, SampleLimitError } from '../utils/errors';
+import { getMethod, getPath, getPathParameters } from '../utils/eventHelpers';
 
 // ---------------------------------------------------------------------------
 // AWS clients (module-level so they can be replaced in tests via mock)
@@ -174,8 +175,8 @@ async function handleDelete(sampleId: string): Promise<{ deleted: boolean; sampl
 // Route dispatcher
 // ---------------------------------------------------------------------------
 async function handleRequest(event: APIGatewayProxyEventV2): Promise<unknown> {
-  const method = event.requestContext.http.method.toUpperCase();
-  const path = event.requestContext.http.path;
+  const method = getMethod(event);
+  const path = getPath(event);
 
   if (method === 'POST' && path === '/admin/samples') {
     if (!event.body) {
@@ -186,7 +187,7 @@ async function handleRequest(event: APIGatewayProxyEventV2): Promise<unknown> {
   }
 
   if (method === 'DELETE' && path.startsWith('/admin/samples/')) {
-    const sampleId = event.pathParameters?.sampleId ?? path.split('/').pop() ?? '';
+    const sampleId = getPathParameters(event)?.sampleId ?? path.split('/').pop() ?? '';
     if (!sampleId) {
       throw new ValidationError('sampleId path parameter is required', 'sampleId', 'required');
     }
@@ -203,8 +204,8 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   try {
     const result = await handleRequest(event);
     const statusCode =
-      event.requestContext.http.method.toUpperCase() === 'POST' &&
-      event.requestContext.http.path === '/admin/samples'
+      getMethod(event) === 'POST' &&
+      getPath(event) === '/admin/samples'
         ? 201
         : 200;
     return {

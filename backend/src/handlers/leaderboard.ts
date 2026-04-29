@@ -19,6 +19,7 @@ import {
 
 import { withRetry } from '../utils/dynamoRetry';
 import { ValidationError } from '../utils/errors';
+import { getMethod, getPath, getPathParameters } from '../utils/eventHelpers';
 
 // ---------------------------------------------------------------------------
 // AWS clients (exported for test mocking)
@@ -141,8 +142,8 @@ async function handleDeleteLeaderboard(entryId: string): Promise<APIGatewayProxy
 // ---------------------------------------------------------------------------
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   try {
-    const method = event.requestContext.http.method;
-    const path = event.rawPath;
+    const method = getMethod(event);
+    const path = getPath(event);
 
     // GET /leaderboard
     if (method === 'GET' && path.endsWith('/leaderboard')) {
@@ -160,7 +161,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // DELETE /admin/leaderboard/{entry}
     if (method === 'DELETE' && path.includes('/admin/leaderboard/')) {
-      const entryId = event.pathParameters?.entry ?? '';
+      const entryId = getPathParameters(event)?.entry ?? '';
       return await handleDeleteLeaderboard(entryId);
     }
 

@@ -49,14 +49,17 @@ export class CdnStack extends cdk.Stack {
     });
 
     // ── API Gateway origin ───────────────────────────────────────────────────
+    // REST API URL format: https://{id}.execute-api.{region}.amazonaws.com/prod
+    // We extract the domain by splitting on '/' and taking index 2.
 
     const apiDomainName = cdk.Fn.select(
       2,
-      cdk.Fn.split('/', apiStack.httpApi.apiEndpoint),
+      cdk.Fn.split('/', apiStack.restApi.url),
     );
 
     const apiOrigin = new cloudfrontOrigins.HttpOrigin(apiDomainName, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+      originPath: '/prod',  // REST API stage prefix
     });
 
     // ── S3 origins built from L1 — NO OAI created ───────────────────────────
@@ -94,6 +97,8 @@ export class CdnStack extends cdk.Stack {
       },
 
       additionalBehaviors: {
+    // CloudFront /api/* behavior strips the /api prefix and forwards to
+    // /prod/* on the REST API. The originPath '/prod' above handles the stage.
         '/api/*': {
           origin: apiOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,

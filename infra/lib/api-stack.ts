@@ -2,9 +2,7 @@ import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
-import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import * as apigwv2Authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
 import { StorageStack } from './storage-stack';
 import { AuthStack } from './auth-stack';
@@ -16,7 +14,16 @@ export interface ApiStackProps extends cdk.StackProps {
 }
 
 export class ApiStack extends cdk.Stack {
-  public readonly httpApi: apigwv2.HttpApi;
+  /** The REST API — used by CdnStack to build the CloudFront origin domain. */
+  public readonly restApi: apigw.RestApi;
+
+  /** Expose apiEndpoint for compatibility with CdnStack (https://id.execute-api.region.amazonaws.com/prod) */
+  public get httpApi(): { apiEndpoint: string } {
+    return {
+      apiEndpoint: `https://${this.restApi.restApiId}.execute-api.${this.region}.amazonaws.com/${this.restApi.deploymentStage.stageName}`,
+    };
+  }
+
   public readonly uploadSampleFn: lambdaNodejs.NodejsFunction;
   public readonly manageProfileFn: lambdaNodejs.NodejsFunction;
   public readonly synthesizeFn: lambdaNodejs.NodejsFunction;
@@ -41,8 +48,6 @@ export class ApiStack extends cdk.Stack {
       SAGEMAKER_ENDPOINT_NAME: sageMakerEndpointName,
     };
 
-    // ── Shared Lambda configuration ──────────────────────────────────────────
-
     const commonLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
       runtime: lambda.Runtime.NODEJS_20_X,
       architecture: lambda.Architecture.ARM_64,
@@ -65,7 +70,6 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-upload-sample',
       entry: path.join(handlersDir, 'upload-sample.ts'),
       handler: 'handler',
-      description: 'Handles voice sample upload and deletion',
     });
 
     this.manageProfileFn = new lambdaNodejs.NodejsFunction(this, 'ManageProfileFn', {
@@ -73,7 +77,6 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-manage-profile',
       entry: path.join(handlersDir, 'manage-profile.ts'),
       handler: 'handler',
-      description: 'Manages voice profiles (build, list)',
     });
 
     this.synthesizeFn = new lambdaNodejs.NodejsFunction(this, 'SynthesizeFn', {
@@ -81,7 +84,6 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-synthesize',
       entry: path.join(handlersDir, 'synthesize.ts'),
       handler: 'handler',
-      description: 'Synthesizes speech via SageMaker XTTS v2',
     });
 
     this.quoteGeneratorFn = new lambdaNodejs.NodejsFunction(this, 'QuoteGeneratorFn', {
@@ -89,7 +91,6 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-quote-generator',
       entry: path.join(handlersDir, 'quote-generator.ts'),
       handler: 'handler',
-      description: 'Generates random humorous quotes with synthesized audio',
     });
 
     this.quizFn = new lambdaNodejs.NodejsFunction(this, 'QuizFn', {
@@ -97,7 +98,6 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-quiz',
       entry: path.join(handlersDir, 'quiz.ts'),
       handler: 'handler',
-      description: 'Manages voice-guessing quiz rounds and scoring',
     });
 
     this.leaderboardFn = new lambdaNodejs.NodejsFunction(this, 'LeaderboardFn', {
@@ -105,10 +105,9 @@ export class ApiStack extends cdk.Stack {
       functionName: 'colleague-voice-bot-leaderboard',
       entry: path.join(handlersDir, 'leaderboard.ts'),
       handler: 'handler',
-      description: 'Manages leaderboard read/write/delete',
     });
 
-    // ── Grant Lambda permissions to AWS resources ────────────────────────────
+    // ── IAM grants ───────────────────────────────────────────────────────────
 
     storageStack.audioBucket.grantReadWrite(this.uploadSampleFn);
     storageStack.audioBucket.grantReadWrite(this.manageProfileFn);
@@ -134,157 +133,109 @@ export class ApiStack extends cdk.Stack {
 
     storageStack.quoteLibraryTable.grantReadData(this.quoteGeneratorFn);
 
-    // ── HTTP API ─────────────────────────────────────────────────────────────
+    // ── REST API ─────────────────────────────────────────────────────────────
 
-    this.httpApi = new apigwv2.HttpApi(this, 'HttpApi', {
-      apiName: 'colleague-voice-bot-api',
-      description: 'Colleague Voice Bot HTTP API',
-      corsPreflight: {
-        allowOrigins: ['*'],
-        allowMethods: [
-          apigwv2.CorsHttpMethod.GET,
-          apigwv2.CorsHttpMethod.POST,
-          apigwv2.CorsHttpMethod.DELETE,
-          apigwv2.CorsHttpMethod.OPTIONS,
-        ],
+    this.restApi = new apigw.RestApi(this, 'RestApi', {
+      restApiName: 'colleague-voice-bot-api',
+      description: 'Colleague Voice Bot REST API',
+      deployOptions: {
+        stageName: 'prod',
+      },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigw.Cors.ALL_ORIGINS,
+        allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
       },
     });
 
-    // ── JWT Authorizer ───────────────────────────────────────────────────────
+    // ── Cognito Authorizer ───────────────────────────────────────────────────
 
-    const jwtAuthorizer = new apigwv2Authorizers.HttpJwtAuthorizer(
-      'CognitoJwtAuthorizer',
-      authStack.userPool.userPoolProviderUrl,
-      {
-        jwtAudience: [authStack.userPoolClient.userPoolClientId],
-        authorizerName: 'CognitoJwtAuthorizer',
-      },
-    );
-
-    // ── Lambda Integrations ──────────────────────────────────────────────────
-
-    const uploadSampleIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'UploadSampleIntegration',
-      this.uploadSampleFn,
-    );
-
-    const manageProfileIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'ManageProfileIntegration',
-      this.manageProfileFn,
-    );
-
-    const synthesizeIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'SynthesizeIntegration',
-      this.synthesizeFn,
-    );
-
-    const quoteGeneratorIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'QuoteGeneratorIntegration',
-      this.quoteGeneratorFn,
-    );
-
-    const quizIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'QuizIntegration',
-      this.quizFn,
-    );
-
-    const leaderboardIntegration = new apigwv2Integrations.HttpLambdaIntegration(
-      'LeaderboardIntegration',
-      this.leaderboardFn,
-    );
-
-    // ── Admin Routes (JWT authorizer required) ───────────────────────────────
-
-    this.httpApi.addRoutes({
-      path: '/admin/samples',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: uploadSampleIntegration,
-      authorizer: jwtAuthorizer,
+    const cognitoAuthorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'CognitoAuthorizer', {
+      cognitoUserPools: [authStack.userPool],
+      authorizerName: 'CognitoAuthorizer',
+      identitySource: 'method.request.header.Authorization',
     });
 
-    this.httpApi.addRoutes({
-      path: '/admin/samples/{sampleId}',
-      methods: [apigwv2.HttpMethod.DELETE],
-      integration: uploadSampleIntegration,
-      authorizer: jwtAuthorizer,
-    });
+    // ── Lambda integrations ──────────────────────────────────────────────────
 
-    this.httpApi.addRoutes({
-      path: '/admin/profiles/{colleagueId}/build',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: manageProfileIntegration,
-      authorizer: jwtAuthorizer,
-    });
+    const uploadInt = new apigw.LambdaIntegration(this.uploadSampleFn);
+    const profileInt = new apigw.LambdaIntegration(this.manageProfileFn);
+    const synthesizeInt = new apigw.LambdaIntegration(this.synthesizeFn);
+    const quoteInt = new apigw.LambdaIntegration(this.quoteGeneratorFn);
+    const quizInt = new apigw.LambdaIntegration(this.quizFn);
+    const leaderboardInt = new apigw.LambdaIntegration(this.leaderboardFn);
 
-    this.httpApi.addRoutes({
-      path: '/admin/profiles',
-      methods: [apigwv2.HttpMethod.GET],
-      integration: manageProfileIntegration,
-      authorizer: jwtAuthorizer,
-    });
+    const authOpts: apigw.MethodOptions = {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigw.AuthorizationType.COGNITO,
+    };
 
-    this.httpApi.addRoutes({
-      path: '/admin/leaderboard/{entry}',
-      methods: [apigwv2.HttpMethod.DELETE],
-      integration: leaderboardIntegration,
-      authorizer: jwtAuthorizer,
-    });
+    const noAuth: apigw.MethodOptions = {
+      authorizationType: apigw.AuthorizationType.NONE,
+    };
 
-    // ── Public Routes (no auth) ──────────────────────────────────────────────
+    // ── /admin ───────────────────────────────────────────────────────────────
 
-    this.httpApi.addRoutes({
-      path: '/colleagues',
-      methods: [apigwv2.HttpMethod.GET],
-      integration: manageProfileIntegration,
-    });
+    const admin = this.restApi.root.addResource('admin');
 
-    this.httpApi.addRoutes({
-      path: '/synthesize',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: synthesizeIntegration,
-    });
+    // /admin/samples
+    const adminSamples = admin.addResource('samples');
+    adminSamples.addMethod('POST', uploadInt, authOpts);
 
-    this.httpApi.addRoutes({
-      path: '/quotes/random',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: quoteGeneratorIntegration,
-    });
+    const adminSample = adminSamples.addResource('{sampleId}');
+    adminSample.addMethod('DELETE', uploadInt, authOpts);
 
-    this.httpApi.addRoutes({
-      path: '/quiz/start',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: quizIntegration,
-    });
+    // /admin/profiles
+    const adminProfiles = admin.addResource('profiles');
+    adminProfiles.addMethod('GET', profileInt, authOpts);
 
-    this.httpApi.addRoutes({
-      path: '/quiz/answer',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: quizIntegration,
-    });
+    const adminProfile = adminProfiles.addResource('{colleagueId}');
+    const adminProfileBuild = adminProfile.addResource('build');
+    adminProfileBuild.addMethod('POST', profileInt, authOpts);
 
-    this.httpApi.addRoutes({
-      path: '/leaderboard',
-      methods: [apigwv2.HttpMethod.GET],
-      integration: leaderboardIntegration,
-    });
+    // /admin/leaderboard
+    const adminLeaderboard = admin.addResource('leaderboard');
+    const adminLeaderboardEntry = adminLeaderboard.addResource('{entry}');
+    adminLeaderboardEntry.addMethod('DELETE', leaderboardInt, authOpts);
 
-    this.httpApi.addRoutes({
-      path: '/leaderboard',
-      methods: [apigwv2.HttpMethod.POST],
-      integration: leaderboardIntegration,
-    });
+    // ── /colleagues ──────────────────────────────────────────────────────────
+
+    const colleagues = this.restApi.root.addResource('colleagues');
+    colleagues.addMethod('GET', profileInt, noAuth);
+
+    // ── /synthesize ──────────────────────────────────────────────────────────
+
+    const synthesize = this.restApi.root.addResource('synthesize');
+    synthesize.addMethod('POST', synthesizeInt, noAuth);
+
+    // ── /quotes/random ───────────────────────────────────────────────────────
+
+    const quotes = this.restApi.root.addResource('quotes');
+    const quotesRandom = quotes.addResource('random');
+    quotesRandom.addMethod('POST', quoteInt, noAuth);
+
+    // ── /quiz ────────────────────────────────────────────────────────────────
+
+    const quiz = this.restApi.root.addResource('quiz');
+    quiz.addResource('start').addMethod('POST', quizInt, noAuth);
+    quiz.addResource('answer').addMethod('POST', quizInt, noAuth);
+
+    // ── /leaderboard ─────────────────────────────────────────────────────────
+
+    const leaderboard = this.restApi.root.addResource('leaderboard');
+    leaderboard.addMethod('GET', leaderboardInt, noAuth);
+    leaderboard.addMethod('POST', leaderboardInt, noAuth);
 
     // ── Stack Outputs ────────────────────────────────────────────────────────
 
-    new cdk.CfnOutput(this, 'HttpApiUrl', {
-      value: this.httpApi.apiEndpoint,
-      exportName: 'ColleagueVoiceBot-HttpApiUrl',
+    new cdk.CfnOutput(this, 'RestApiUrl', {
+      value: this.restApi.url,
+      exportName: 'ColleagueVoiceBot-RestApiUrl',
     });
 
-    new cdk.CfnOutput(this, 'HttpApiId', {
-      value: this.httpApi.apiId,
-      exportName: 'ColleagueVoiceBot-HttpApiId',
+    new cdk.CfnOutput(this, 'RestApiId', {
+      value: this.restApi.restApiId,
+      exportName: 'ColleagueVoiceBot-RestApiId',
     });
   }
 }
