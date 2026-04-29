@@ -1,7 +1,5 @@
-import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
-import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sagemaker from 'aws-cdk-lib/aws-sagemaker';
 import { Construct } from 'constructs';
@@ -9,6 +7,14 @@ import { StorageStack } from './storage-stack';
 
 export interface SageMakerStackProps extends cdk.StackProps {
   storageStack: StorageStack;
+  /**
+   * Full ECR image URI for the XTTS v2 model container.
+   * e.g. 012345678901.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest
+   *
+   * Read from the MODEL_IMAGE_URI environment variable at synth time.
+   * The build-and-push-model CI job pushes the image before cdk deploy runs.
+   */
+  modelImageUri: string;
 }
 
 export class SageMakerStack extends cdk.Stack {
@@ -18,24 +24,16 @@ export class SageMakerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: SageMakerStackProps) {
     super(scope, id, props);
 
-    const { storageStack } = props;
+    const { storageStack, modelImageUri } = props;
 
     // ── ECR Repository ───────────────────────────────────────────────────────
-    // Retained on stack deletion so that existing SageMaker models that
-    // reference the image are not broken.
+    // The repo is created here so it exists before the first push.
+    // On subsequent deploys the image is already present; we just reference it.
 
     const ecrRepo = new ecr.Repository(this, 'ModelRepository', {
       repositoryName: 'colleague-voice-bot-model',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       imageScanOnPush: true,
-    });
-
-    // ── Docker Image Asset ───────────────────────────────────────────────────
-    // CDK builds the image from model/ and pushes it to ECR during `cdk deploy`.
-
-    const modelImage = new ecr_assets.DockerImageAsset(this, 'ModelImage', {
-      directory: path.join(__dirname, '../../model'),
-      platform: ecr_assets.Platform.LINUX_AMD64, // ml.g4dn.xlarge is x86_64
     });
 
     // ── SageMaker Execution Role ─────────────────────────────────────────────
@@ -46,17 +44,15 @@ export class SageMakerStack extends cdk.Stack {
       description: 'Execution role for the Colleague Voice Bot SageMaker endpoint',
     });
 
-    // SageMaker managed policy (covers CloudWatch Logs, ECR pull, etc.)
     executionRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSageMakerFullAccess'),
     );
 
-    // S3 read access — the container fetches speaker WAV files at inference time
+    // S3 read — container fetches speaker WAV files at inference time
     storageStack.audioBucket.grantRead(executionRole);
 
-    // ECR read access — pull the model image
+    // ECR pull — allow SageMaker to pull the model image
     ecrRepo.grantPull(executionRole);
-    modelImage.repository.grantPull(executionRole);
 
     // ── SageMaker Model ──────────────────────────────────────────────────────
 
@@ -67,7 +63,8 @@ export class SageMakerStack extends cdk.Stack {
       modelName: 'colleague-voice-bot-model',
       executionRoleArn: executionRole.roleArn,
       primaryContainer: {
-        image: modelImage.imageUri,
+        // Image URI is passed in from the pipeline — no DockerImageAsset needed.
+        image: modelImageUri,
         environment: {
           AUDIO_BUCKET_NAME: storageStack.audioBucket.bucketName,
           AWS_DEFAULT_REGION: 'us-east-1',
@@ -106,13 +103,11 @@ export class SageMakerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'SageMakerEndpointName', {
       value: endpointName,
       exportName: 'ColleagueVoiceBot-SageMakerEndpointName',
-      description: 'Name of the SageMaker real-time inference endpoint',
     });
 
     new cdk.CfnOutput(this, 'ModelRepositoryUri', {
       value: ecrRepo.repositoryUri,
       exportName: 'ColleagueVoiceBot-ModelRepositoryUri',
-      description: 'ECR repository URI for the XTTS v2 model image',
     });
   }
 }

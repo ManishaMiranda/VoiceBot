@@ -21,9 +21,18 @@ const storageStack = new StorageStack(app, 'ColleagueVoiceBotStorage', { env });
 const authStack = new AuthStack(app, 'ColleagueVoiceBotAuth', { env });
 
 // 3. SageMaker (ECR + model endpoint) — depends on StorageStack
+// MODEL_IMAGE_URI is set by the CI pipeline after the Docker image is pushed to ECR.
+// Format: <account>.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest
+// On first deploy the ECR repo is created by this stack, then the image is pushed,
+// then subsequent deploys reference the image URI here.
+const modelImageUri =
+  process.env.MODEL_IMAGE_URI ??
+  `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/colleague-voice-bot-model:latest`;
+
 const sageMakerStack = new SageMakerStack(app, 'ColleagueVoiceBotSageMaker', {
   env,
   storageStack,
+  modelImageUri,
 });
 sageMakerStack.addDependency(storageStack);
 
