@@ -158,7 +158,12 @@ async function handleBuild(colleagueId: string): Promise<{ colleagueId: string; 
     const fileBuffer = Buffer.concat(chunks);
     const actualChecksum = computeChecksum(fileBuffer);
 
-    if (actualChecksum !== sample.checksum) {
+    // Skip checksum validation for manually uploaded samples
+    // (checksum set to 'placeholder' or 'manual-upload' when bypassing the upload API)
+    const isManualUpload =
+      sample.checksum === 'placeholder' || sample.checksum === 'manual-upload';
+
+    if (!isManualUpload && actualChecksum !== sample.checksum) {
       // Update status to failed before throwing
       await withRetry(() =>
         docClient.send(
