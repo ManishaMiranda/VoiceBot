@@ -1,0 +1,30 @@
+{
+  "name": "@colleague-voice-bot/tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Property-based, integration, and smoke tests for the Colleague Voice Bot",
+  "scripts": {
+    "test": "jest",
+    "test:property": "jest --testPathPattern='property'",
+    "test:integration": "jest --testPathPattern='integration'",
+    "test:smoke": "jest --testPathPattern='smoke'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@colleague-voice-bot/backend": "*"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "*",
+    "@aws-sdk/client-s3": "*",
+    "@aws-sdk/client-sagemaker": "3.600.0",
+    "@aws-sdk/client-sagemaker-runtime": "*",
+    "@types/jest": "*",
+    "@types/node": "*",
+    "aws-sdk-client-mock": "*",
+    "axios": "1.7.2",
+    "fast-check": "*",
+    "jest": "*",
+    "ts-jest": "*",
+    "typescript": "*"
+  }
+}

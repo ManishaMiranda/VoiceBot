@@ -1,0 +1,28 @@
+{
+  "name": "@colleague-voice-bot/infra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AWS CDK infrastructure for the Colleague Voice Bot",
+  "main": "dist/bin/app.js",
+  "scripts": {
+    "build": "tsc --build",
+    "build:watch": "tsc --build --watch",
+    "clean": "rm -rf dist cdk.out *.tsbuildinfo",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --all",
+    "deploy:ci": "cdk deploy --all --require-approval never",
+    "diff": "cdk diff",
+    "synth": "cdk synth",
+    "destroy": "cdk destroy --all",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.147.3",
+    "constructs": "10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "aws-cdk": "2.147.3",
+    "typescript": "*"
+  }
+}

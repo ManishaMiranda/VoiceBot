@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+cdk.out/
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Frontend build
+frontend/dist/
+frontend/.vite/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# AWS CDK
+cdk.context.json
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Test artifacts
+junit.xml
+test-results/
+
+# Docker
+.dockerignore
+
+# Python (model container)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+.env/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

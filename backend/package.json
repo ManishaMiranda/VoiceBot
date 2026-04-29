@@ -1,0 +1,31 @@
+{
+  "name": "@colleague-voice-bot/backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lambda handlers and shared utilities for the Colleague Voice Bot",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "build:watch": "tsc --build --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "jest --testPathPattern='backend'",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "*",
+    "@aws-sdk/client-s3": "*",
+    "@aws-sdk/client-sagemaker-runtime": "*",
+    "@aws-sdk/lib-dynamodb": "*",
+    "@aws-sdk/s3-request-presigner": "*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.140",
+    "@types/node": "*",
+    "aws-sdk-client-mock": "*",
+    "fast-check": "*",
+    "ts-jest": "*",
+    "typescript": "*"
+  }
+}
