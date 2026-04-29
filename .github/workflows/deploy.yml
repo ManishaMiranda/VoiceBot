@@ -34,6 +34,18 @@ jobs:
       - name: Build frontend (needed for CDK synth of CdnStack)
         run: npm run build --workspace=frontend
 
+      - name: Ensure ECR repository exists
+        # Create the ECR repo before CDK deploy so the SageMaker stack can
+        # import it by name. Safe to run on every deploy — idempotent.
+        run: |
+          aws ecr describe-repositories \
+            --repository-names $ECR_REPO \
+            --region $AWS_REGION 2>/dev/null || \
+          aws ecr create-repository \
+            --repository-name $ECR_REPO \
+            --image-scanning-configuration scanOnPush=true \
+            --region $AWS_REGION
+
       - name: Deploy Storage + Auth stacks
         run: npx cdk deploy ColleagueVoiceBotStorage ColleagueVoiceBotAuth --require-approval never
         working-directory: infra
@@ -56,15 +68,6 @@ jobs:
           aws-region: us-east-1
 
       - uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Ensure ECR repository exists
-        run: |
-          aws ecr describe-repositories \
-            --repository-names $ECR_REPO \
-            --region $AWS_REGION 2>/dev/null || \
-          aws ecr create-repository \
-            --repository-name $ECR_REPO \
-            --region $AWS_REGION
 
       - name: Build Docker image
         run: docker build -t $ECR_REPO model/

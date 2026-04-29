@@ -27,14 +27,16 @@ export class SageMakerStack extends cdk.Stack {
     const { storageStack, modelImageUri } = props;
 
     // ── ECR Repository ───────────────────────────────────────────────────────
-    // The repo is created here so it exists before the first push.
-    // On subsequent deploys the image is already present; we just reference it.
+    // The ECR repository is created by the CI pipeline (aws ecr create-repository)
+    // before the Docker image is pushed. We import it here as a reference so
+    // we can grant the SageMaker execution role pull access.
+    // We do NOT create it via CDK to avoid conflicts with the pre-existing repo.
 
-    const ecrRepo = new ecr.Repository(this, 'ModelRepository', {
-      repositoryName: 'colleague-voice-bot-model',
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      imageScanOnPush: true,
-    });
+    const ecrRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'ModelRepository',
+      'colleague-voice-bot-model',
+    );
 
     // ── SageMaker Execution Role ─────────────────────────────────────────────
 
@@ -103,11 +105,6 @@ export class SageMakerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'SageMakerEndpointName', {
       value: endpointName,
       exportName: 'ColleagueVoiceBot-SageMakerEndpointName',
-    });
-
-    new cdk.CfnOutput(this, 'ModelRepositoryUri', {
-      value: ecrRepo.repositoryUri,
-      exportName: 'ColleagueVoiceBot-ModelRepositoryUri',
     });
   }
 }
