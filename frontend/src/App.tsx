@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const closeMobileNav = () => setMobileNavOpen(false);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <div className={styles.app}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <header className={styles.header}>
