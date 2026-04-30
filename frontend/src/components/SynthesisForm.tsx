@@ -3,6 +3,7 @@ import axios from 'axios';
 import AudioPlayer from './AudioPlayer';
 import ColleagueCard from './ColleagueCard';
 import SingingDisclaimer from './SingingDisclaimer';
+import { api } from '../api/client';
 import styles from './SynthesisForm.module.css';
 
 interface Colleague {
@@ -37,11 +38,9 @@ const SynthesisForm: React.FC = () => {
   useEffect(() => {
     const fetchColleagues = async () => {
       try {
-        const res = await axios.get<Colleague[]>('/api/colleagues');
-        // Guard: ensure response is an array before setting state
+        const res = await api.getColleagues();
         setColleagues(Array.isArray(res.data) ? res.data : []);
       } catch {
-        // Non-fatal: show empty grid
         setColleagues([]);
       } finally {
         setLoadingColleagues(false);
@@ -67,12 +66,7 @@ const SynthesisForm: React.FC = () => {
     setShowDisclaimer(false);
 
     try {
-      const res = await axios.post<{ audioUrl: string }>('/api/synthesize', {
-        text: text.trim(),
-        colleagueId: selectedColleagueId,
-        language,
-        singing,
-      });
+      const res = await api.synthesize({ text: text.trim(), colleagueId: selectedColleagueId, language, singing });
       setAudioUrl(res.data.audioUrl);
       if (singing) setShowDisclaimer(true);
     } catch (err) {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import NicknameModal from '../components/NicknameModal';
+import { api } from '../api/client';
 import styles from './LeaderboardView.module.css';
 
 interface LeaderboardEntry {
@@ -32,7 +33,7 @@ const LeaderboardView: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get<LeaderboardEntry[]>('/api/leaderboard');
+      const res = await api.getLeaderboard();
       setEntries(Array.isArray(res.data) ? res.data : []);
     } catch {
       setError('Failed to load leaderboard. Please try again.');
@@ -51,11 +52,7 @@ const LeaderboardView: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      await axios.post('/api/leaderboard', {
-        nickname,
-        score: scoreInput,
-        gamesPlayed: gamesPlayedInput,
-      });
+      await api.submitScore(nickname, scoreInput, gamesPlayedInput);
       setSuccessMsg(`Score submitted! Good luck on the leaderboard, ${nickname}! 🎉`);
       await fetchLeaderboard();
     } catch (err) {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import QuizResult from '../components/QuizResult';
+import { api } from '../api/client';
 import styles from './VoiceQuizView.module.css';
 
 interface QuizRound {
@@ -31,7 +32,7 @@ const VoiceQuizView: React.FC = () => {
     setAnswerResult(null);
 
     try {
-      const res = await axios.post<QuizRound>('/api/quiz/start');
+      const res = await api.startQuiz();
       setRound(res.data);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data) {
@@ -52,11 +53,7 @@ const VoiceQuizView: React.FC = () => {
     setError(null);
 
     try {
-      const res = await axios.post<QuizAnswerResponse>('/api/quiz/answer', {
-        roundId: round.roundId,
-        guess,
-        nickname: 'player',
-      });
+      const res = await api.answerQuiz(round.roundId, guess, 'player');
       setAnswerResult(res.data);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data) {

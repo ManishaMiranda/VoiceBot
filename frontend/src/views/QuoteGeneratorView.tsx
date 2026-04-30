@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import ColleagueCard from '../components/ColleagueCard';
+import { api } from '../api/client';
 import styles from './QuoteGeneratorView.module.css';
 
 interface Colleague {
@@ -26,10 +27,9 @@ const QuoteGeneratorView: React.FC = () => {
   useEffect(() => {
     const fetchColleagues = async () => {
       try {
-        const res = await axios.get<Colleague[]>('/api/colleagues');
+        const res = await api.getColleagues();
         setColleagues(Array.isArray(res.data) ? res.data : []);
       } catch {
-        // Non-fatal
         setColleagues([]);
       } finally {
         setLoadingColleagues(false);
@@ -46,9 +46,7 @@ const QuoteGeneratorView: React.FC = () => {
     setResult(null);
 
     try {
-      const res = await axios.post<QuoteResult>('/api/quotes/random', {
-        colleagueId: selectedColleagueId,
-      });
+      const res = await api.getRandomQuote(selectedColleagueId);
       setResult(res.data);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data) {
