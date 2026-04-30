@@ -42,7 +42,7 @@ const App: React.FC = () => {
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <header className={styles.header}>
           <div className={styles.headerInner}>
-            <NavLink to="/" className={styles.logo} onClick={closeMobileNav}>
+            <NavLink to="/" className={() => styles.logo} onClick={closeMobileNav}>
               🎤 Colleague Voice Bot
             </NavLink>
 
