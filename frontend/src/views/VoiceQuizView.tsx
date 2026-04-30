@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import QuizResult from '../components/QuizResult';
 import { api } from '../api/client';
@@ -35,7 +35,7 @@ const VoiceQuizView: React.FC = () => {
       const res = await api.startQuiz();
       setRound(res.data);
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data) {
+      if (isAxiosError(err) && err.response?.data) {
         const data = err.response.data as { message?: string; error?: string };
         setError(data.message ?? data.error ?? 'Failed to start quiz. Please try again.');
       } else {
@@ -56,7 +56,7 @@ const VoiceQuizView: React.FC = () => {
       const res = await api.answerQuiz(round.roundId, guess, 'player');
       setAnswerResult(res.data);
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data) {
+      if (isAxiosError(err) && err.response?.data) {
         const data = err.response.data as { message?: string; error?: string };
         setError(data.message ?? data.error ?? 'Failed to submit answer. Please try again.');
       } else {
