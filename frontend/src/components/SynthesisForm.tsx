@@ -4,7 +4,6 @@ import AudioPlayer from './AudioPlayer';
 import ColleagueCard from './ColleagueCard';
 import SingingDisclaimer from './SingingDisclaimer';
 import { api } from '../api/client';
-import styles from './SynthesisForm.module.css';
 
 interface Colleague {
   colleagueId: string;
@@ -81,41 +80,72 @@ const SynthesisForm: React.FC = () => {
     }
   };
 
-  const charCounterClass =
-    isOverLimit
-      ? styles.charCounterOver
-      : isNearLimit
-        ? styles.charCounterWarn
-        : styles.charCounter;
+  const charCounterStyle: React.CSSProperties = {
+    fontSize: '0.78rem',
+    textAlign: 'right',
+    color: isOverLimit ? '#dc2626' : isNearLimit ? '#d97706' : '#94a3b8',
+    fontWeight: isOverLimit || isNearLimit ? 600 : 400,
+  };
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit} noValidate>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+    >
       {/* Text input */}
-      <div className={styles.fieldGroup}>
-        <label htmlFor="synthesis-text" className={styles.label}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <label
+          htmlFor="synthesis-text"
+          style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}
+        >
           Text to synthesize
         </label>
         <textarea
           id="synthesis-text"
-          className={styles.textarea}
+          className="cvb-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Type something for your colleague to say…"
           maxLength={singing ? 200 : undefined}
           aria-describedby="char-counter"
+          style={{
+            width: '100%',
+            minHeight: 120,
+            padding: '0.75rem',
+            border: '1.5px solid #d1d5db',
+            borderRadius: 8,
+            fontSize: '0.95rem',
+            fontFamily: 'inherit',
+            resize: 'vertical',
+            transition: 'border-color 0.15s',
+            boxSizing: 'border-box',
+            color: '#1e293b',
+            background: '#fff',
+          }}
         />
-        <span id="char-counter" className={charCounterClass} aria-live="polite">
+        <span id="char-counter" style={charCounterStyle} aria-live="polite">
           {charCount} / {maxChars}
         </span>
       </div>
 
       {/* Colleague selector */}
-      <div className={styles.fieldGroup}>
-        <span className={styles.label}>Choose a colleague</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+          Choose a colleague
+        </span>
         {loadingColleagues ? (
           <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Loading colleagues…</p>
         ) : (
-          <div className={styles.colleagueGrid} role="group" aria-label="Colleague selection">
+          <div
+            role="group"
+            aria-label="Colleague selection"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
             {colleagues.map((c) => (
               <ColleagueCard
                 key={c.colleagueId}
@@ -135,15 +165,30 @@ const SynthesisForm: React.FC = () => {
       </div>
 
       {/* Language selector */}
-      <div className={styles.fieldGroup}>
-        <label htmlFor="language-select" className={styles.label}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <label
+          htmlFor="language-select"
+          style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}
+        >
           Language
         </label>
         <select
           id="language-select"
-          className={styles.select}
+          className="cvb-select"
           value={language}
           onChange={(e) => setLanguage(e.target.value as 'en' | 'fr' | 'hi')}
+          style={{
+            padding: '0.6rem 0.75rem',
+            border: '1.5px solid #d1d5db',
+            borderRadius: 8,
+            fontSize: '0.95rem',
+            fontFamily: 'inherit',
+            background: '#fff',
+            color: '#1e293b',
+            cursor: 'pointer',
+            transition: 'border-color 0.15s',
+            maxWidth: 240,
+          }}
         >
           {LANGUAGES.map((l) => (
             <option key={l.code} value={l.code}>
@@ -154,13 +199,23 @@ const SynthesisForm: React.FC = () => {
       </div>
 
       {/* Singing mode toggle */}
-      <div className={styles.fieldGroup}>
-        <label className={styles.toggleLabel} htmlFor="singing-toggle">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <label
+          htmlFor="singing-toggle"
+          style={{
+            fontSize: '0.9rem',
+            color: '#374151',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
           <input
             id="singing-toggle"
             type="checkbox"
             role="switch"
-            className={styles.toggle}
+            className="cvb-toggle"
             checked={singing}
             onChange={(e) => setSinging(e.target.checked)}
             aria-label="Singing mode"
@@ -177,24 +232,73 @@ const SynthesisForm: React.FC = () => {
       {/* Submit */}
       <button
         type="submit"
-        className={styles.submitBtn}
+        className="cvb-btn-primary"
         disabled={submitting || !selectedColleagueId || !text.trim() || isOverLimit}
         aria-busy={submitting}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          padding: '0.75rem 2rem',
+          background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 8,
+          fontSize: '1rem',
+          fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'opacity 0.15s, transform 0.1s',
+          alignSelf: 'flex-start',
+        }}
       >
-        {submitting && <span className={styles.spinner} aria-hidden="true" />}
+        {submitting && (
+          <span
+            className="cvb-spin"
+            aria-hidden="true"
+            style={{
+              width: 16,
+              height: 16,
+              border: '2px solid rgba(255,255,255,0.4)',
+              borderTopColor: '#fff',
+              borderRadius: '50%',
+              display: 'inline-block',
+            }}
+          />
+        )}
         {submitting ? 'Synthesizing…' : '🎙️ Synthesize'}
       </button>
 
       {/* Error */}
       {error && (
-        <div className={styles.error} role="alert">
+        <div
+          role="alert"
+          style={{
+            padding: '0.75rem 1rem',
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: 8,
+            color: '#b91c1c',
+            fontSize: '0.875rem',
+          }}
+        >
           {error}
         </div>
       )}
 
       {/* Result */}
       {(submitting || audioUrl) && (
-        <div className={styles.resultSection}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            padding: '1.25rem',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+          }}
+        >
           <AudioPlayer audioUrl={audioUrl} loading={submitting} label="Result" />
           {showDisclaimer && !submitting && (
             <SingingDisclaimer onDismiss={() => setShowDisclaimer(false)} />

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import styles from './NicknameModal.module.css';
 
 export interface NicknameModalProps {
   isOpen: boolean;
@@ -16,7 +15,6 @@ const NicknameModal: React.FC<NicknameModalProps> = ({ isOpen, onConfirm, onCanc
   useEffect(() => {
     if (isOpen) {
       setNickname('');
-      // Small delay to allow the animation to start before focusing
       const timer = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(timer);
     }
@@ -76,39 +74,110 @@ const NicknameModal: React.FC<NicknameModalProps> = ({ isOpen, onConfirm, onCanc
 
   return (
     <div
-      className={styles.overlay}
       onClick={handleOverlayClick}
       aria-modal="true"
       role="dialog"
       aria-labelledby="nickname-modal-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '1rem',
+      }}
     >
-      <div className={styles.dialog} ref={dialogRef}>
-        <h2 id="nickname-modal-title" className={styles.title}>
+      <div
+        ref={dialogRef}
+        style={{
+          background: '#fff',
+          borderRadius: 16,
+          padding: '2rem',
+          width: '100%',
+          maxWidth: 420,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.25rem',
+        }}
+      >
+        <h2
+          id="nickname-modal-title"
+          style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', margin: 0 }}
+        >
           🏆 Submit Your Score
         </h2>
-        <p className={styles.subtitle}>Enter a nickname to appear on the leaderboard.</p>
+        <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '-0.75rem 0 0' }}>
+          Enter a nickname to appear on the leaderboard.
+        </p>
 
         <form onSubmit={handleSubmit}>
           <input
             ref={inputRef}
             type="text"
-            className={styles.input}
+            className="cvb-input"
             placeholder="Your nickname…"
             value={nickname}
             onChange={(e) => setNickname(e.target.value.slice(0, 30))}
             maxLength={30}
             aria-label="Nickname"
             autoComplete="off"
+            style={{
+              width: '100%',
+              padding: '0.7rem 0.875rem',
+              border: '1.5px solid #d1d5db',
+              borderRadius: 8,
+              fontSize: '1rem',
+              fontFamily: 'inherit',
+              color: '#1e293b',
+              transition: 'border-color 0.15s',
+              boxSizing: 'border-box',
+            }}
           />
 
-          <div className={styles.actions}>
-            <button type="button" className={styles.cancelBtn} onClick={onCancel}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.75rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.25rem',
+            }}
+          >
+            <button
+              type="button"
+              className="cvb-cancel-btn"
+              onClick={onCancel}
+              style={{
+                padding: '0.65rem 1.25rem',
+                background: '#f1f5f9',
+                color: '#475569',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
+            >
               Cancel
             </button>
             <button
               type="submit"
-              className={styles.confirmBtn}
+              className="cvb-confirm-btn"
               disabled={!nickname.trim()}
+              style={{
+                padding: '0.65rem 1.5rem',
+                background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'opacity 0.15s',
+              }}
             >
               Submit Score
             </button>
