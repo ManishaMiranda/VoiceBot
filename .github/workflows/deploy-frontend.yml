@@ -3,9 +3,6 @@ name: Deploy Frontend to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-frontend.yml'
 
 permissions:
   contents: read
@@ -43,6 +40,9 @@ jobs:
           VITE_URL_LEADERBOARD: ${{ vars.VITE_URL_LEADERBOARD }}
 
       - uses: actions/configure-pages@v4
+
+      - name: Create 404.html for SPA routing
+        run: cp frontend/dist/index.html frontend/dist/404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
