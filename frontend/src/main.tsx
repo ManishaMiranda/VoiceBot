@@ -1,11 +1,12 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { render } from 'react-dom';
 import App from './App';
 import './index.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  throw new Error('Root element not found. Make sure index.html has <div id="root"></div>');
+  throw new Error('Root element not found');
 }
 
-ReactDOM.createRoot(rootElement).render(<App />);
+// Use legacy render (React 17 API) to avoid concurrent mode scheduler crashes
+render(<App />, rootElement);
