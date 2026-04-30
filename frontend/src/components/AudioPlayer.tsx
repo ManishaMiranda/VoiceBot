@@ -7,22 +7,28 @@ export interface AudioPlayerProps {
 }
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, loading = false, label }) => {
+  // Always render a container div — never return null.
+  // Switching between null and a DOM element causes React reconciler crashes
+  // when the component is conditionally shown/hidden.
+
+  const labelEl = label ? (
+    <span
+      style={{
+        fontSize: '0.85rem',
+        fontWeight: 600,
+        color: '#475569',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+      }}
+    >
+      {label}
+    </span>
+  ) : null;
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {label && (
-          <span
-            style={{
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: '#475569',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {label}
-          </span>
-        )}
+        {labelEl}
         <div
           role="status"
           aria-live="polite"
@@ -58,24 +64,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, loading = false, la
   }
 
   if (!audioUrl) {
-    return null;
+    // Return empty div instead of null to keep the fiber stable
+    return <div style={{ display: 'none' }} aria-hidden="true" />;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {label && (
-        <span
-          style={{
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            color: '#475569',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {label}
-        </span>
-      )}
+      {labelEl}
       <audio
         style={{ width: '100%', borderRadius: 8, accentColor: '#7c3aed' }}
         controls

@@ -11,7 +11,7 @@ const SingingDisclaimer: React.FC<SingingDisclaimerProps> = ({ visible, onDismis
 
   const isVisible = visible !== undefined ? visible : !dismissed;
 
-  if (!isVisible) return null;
+  if (!isVisible) return <div style={{ display: 'none' }} aria-hidden="true" />;
 
   const handleDismiss = () => {
     setDismissed(true);

@@ -57,7 +57,7 @@ const NicknameModal: React.FC<NicknameModalProps> = ({ isOpen, onConfirm, onCanc
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onCancel]);
 
-  if (!isOpen) return null;
+  if (!isOpen) return <div style={{ display: 'none' }} aria-hidden="true" />;
 
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
