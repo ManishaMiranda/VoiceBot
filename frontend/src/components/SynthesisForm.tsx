@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 import AudioPlayer from './AudioPlayer';
 import ColleagueCard from './ColleagueCard';
 import SingingDisclaimer from './SingingDisclaimer';
@@ -70,7 +70,7 @@ const SynthesisForm: React.FC = () => {
       setAudioUrl(res.data.audioUrl);
       if (singing) setShowDisclaimer(true);
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data) {
+      if (isAxiosError(err) && err.response?.data) {
         const data = err.response.data as { message?: string; error?: string };
         setError(data.message ?? data.error ?? 'Synthesis failed. Please try again.');
       } else {

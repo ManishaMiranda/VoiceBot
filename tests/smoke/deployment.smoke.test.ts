@@ -15,7 +15,7 @@
  */
 
 import axios from 'axios';
-import { S3Client, GetBucketPublicAccessBlockCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetPublicAccessBlockCommand } from '@aws-sdk/client-s3';
 import { DynamoDBClient, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { SageMakerClient, DescribeEndpointCommand } from '@aws-sdk/client-sagemaker';
 
@@ -51,7 +51,7 @@ describe('Smoke tests — deployed environment', () => {
 
     const s3 = new S3Client({ region });
     const result = await s3.send(
-      new GetBucketPublicAccessBlockCommand({ Bucket: bucketName }),
+      new GetPublicAccessBlockCommand({ Bucket: bucketName }),
     );
 
     expect(result.PublicAccessBlockConfiguration?.BlockPublicAcls).toBe(true);

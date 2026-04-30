@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 import NicknameModal from '../components/NicknameModal';
 import { api } from '../api/client';
 import styles from './LeaderboardView.module.css';
@@ -56,7 +56,7 @@ const LeaderboardView: React.FC = () => {
       setSuccessMsg(`Score submitted! Good luck on the leaderboard, ${nickname}! 🎉`);
       await fetchLeaderboard();
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data) {
+      if (isAxiosError(err) && err.response?.data) {
         const data = err.response.data as { message?: string; error?: string };
         setError(data.message ?? data.error ?? 'Failed to submit score.');
       } else {

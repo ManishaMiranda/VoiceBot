@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import ColleagueCard from '../components/ColleagueCard';
 import { api } from '../api/client';
@@ -49,7 +49,7 @@ const QuoteGeneratorView: React.FC = () => {
       const res = await api.getRandomQuote(selectedColleagueId);
       setResult(res.data);
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data) {
+      if (isAxiosError(err) && err.response?.data) {
         const data = err.response.data as { message?: string; error?: string };
         setError(data.message ?? data.error ?? 'Failed to generate quote. Please try again.');
       } else {
